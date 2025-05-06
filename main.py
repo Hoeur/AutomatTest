@@ -11,6 +11,23 @@ import time
 import asyncio
 import os
 from dotenv import load_dotenv
+import base64
+from io import BytesIO
+from PIL import Image
+from fastapi.middleware.cors import CORSMiddleware
+
+# Initialize FastAPI app
+app = FastAPI(title="E-commerce Test Automation API")
+
+# CORS middleware for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000",'http://127.0.0.1:5500'],  # Only allow your frontend's origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,8 +41,6 @@ if not load_dotenv():
 # Debug environment variables
 logger.info(f"Loaded env: BASE_URL={os.getenv('BASE_URL')}, EMAIL={os.getenv('EMAIL')}, "
             f"PASSWORD={os.getenv('PASSWORD')}, PRODUCT_URL={os.getenv('PRODUCT_URL')}")
-
-app = FastAPI(title="E-commerce Test Automation API")
 
 # Pydantic model for test inputs with environment variable defaults
 class TestInput(BaseModel):
@@ -50,12 +65,20 @@ def init_driver():
     driver.implicitly_wait(15)
     return driver
 
+# Capture a screenshot and return it as a base64 string
+def capture_screenshot(driver):
+    screenshot = driver.get_screenshot_as_png()
+    image = Image.open(BytesIO(screenshot))
+    buffered = BytesIO()
+    image.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
 # Test case: Login to e-commerce website
 async def test_login(driver, url, username, password):
     try:
         driver.get(url)
         wait = WebDriverWait(driver, 15)
-        
+
         login_button = wait.until(EC.element_to_be_clickable((By.ID, "joinBTn")))
         login_button.click()
         await asyncio.sleep(2)
@@ -81,7 +104,7 @@ async def test_login(driver, url, username, password):
         return {"status": "success", "message": "Login successful"}
     except Exception as e:
         logger.error(f"Login test failed: {str(e)}")
-        return {"status": "failed", "message": str(e)}
+        return {"status": "failed", "message": str(e), "screenshot": capture_screenshot(driver)}
 
 # Test case: Add product to cart and proceed to checkout
 async def test_add_to_cart(driver, product_url):
@@ -180,11 +203,11 @@ async def test_add_to_cart(driver, product_url):
                 continue
 
         # If no valid slot was found
-        return {"status": "failed", "message": "No available slot found"}
+        return {"status": "failed", "message": "No available slot found", "screenshot": capture_screenshot(driver)}
 
     except Exception as e:
         logger.error(f"Test failed: {str(e)}")
-        return {"status": "failed", "message": str(e)}
+        return {"status": "failed", "message": str(e), "screenshot": capture_screenshot(driver)}
 
 # FastAPI endpoint to run tests
 @app.post("/run-tests")
@@ -192,31 +215,20 @@ async def run_tests(test_input: TestInput):
     driver = init_driver()
     try:
         results = {}
-        
+
         if test_input.username and test_input.password:
             results["login"] = await test_login(driver, test_input.url, test_input.username, test_input.password)
-        
+
         if test_input.product_url:
             results["add_to_cart"] = await test_add_to_cart(driver, test_input.product_url)
-        
+
         if not results:
             raise HTTPException(status_code=400, detail="No tests specified")
-        
+
         return results
     finally:
         driver.quit()
 
-# Default test runner
-async def run_default_tests():
-    try:
-        test_input = TestInput()
-        result = await run_tests(test_input)
-        logger.info(f"Default test results: {result}")
-    except ValueError as e:
-        logger.error(f"Failed to initialize TestInput: {str(e)}")
-        raise
-
 # Run the FastAPI server
 if __name__ == "__main__":
-    asyncio.run(run_default_tests())
     uvicorn.run(app, host="0.0.0.0", port=8000)
