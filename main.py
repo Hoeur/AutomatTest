@@ -79,27 +79,23 @@ async def test_login(driver, url, username, password):
         driver.get(url)
         wait = WebDriverWait(driver, 15)
 
-        login_button = wait.until(EC.element_to_be_clickable((By.ID, "joinBTn")))
-        login_button.click()
+        wait.until(EC.element_to_be_clickable((By.ID, "joinBTn"))).click()
         await asyncio.sleep(2)
 
-        email_tab = wait.until(EC.element_to_be_clickable((By.ID, "sign-in-tab-tab-email")))
-        email_tab.click()
+        wait.until(EC.element_to_be_clickable((By.ID, "sign-in-tab-tab-email"))).click()
         await asyncio.sleep(2)
 
-        username_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
-        username_field.send_keys(username)
-        await asyncio.sleep(2)
+        wait.until(EC.presence_of_element_located((By.NAME, "email"))).send_keys(username)
+        await asyncio.sleep(1)
 
-        password_field = wait.until(EC.presence_of_element_located((By.NAME, "email-pass")))
-        password_field.send_keys(password)
-        await asyncio.sleep(2)
+        wait.until(EC.presence_of_element_located((By.NAME, "email-pass"))).send_keys(password)
+        await asyncio.sleep(1)
 
-        submit_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']")))
-        submit_button.click()
-        await asyncio.sleep(2)
+        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']"))).click()
 
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.user-account, div.profile, a.account")))
+        # Wait for login success by checking for a post-login element (change selector as needed)
+        wait.until(EC.presence_of_element_located((By.ID, "cart-icon")))  # Example: change to a real post-login element
+
         logger.info("Login test passed")
         return {"status": "success", "message": "Login successful"}
     except Exception as e:
@@ -107,12 +103,11 @@ async def test_login(driver, url, username, password):
         return {"status": "failed", "message": str(e), "screenshot": capture_screenshot(driver)}
 
 # Test case: Add product to cart and proceed to checkout
-async def test_add_to_cart(driver, product_url):
+async def test_add_to_cart_step1(driver, product_url):
     try:
         driver.get(product_url)
         wait = WebDriverWait(driver, 15)
 
-        # Add product to cart
         plus_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "btn-plus")))
         plus_button.click()
         await asyncio.sleep(2)
@@ -129,33 +124,36 @@ async def test_add_to_cart(driver, product_url):
         checkout_button.click()
         await asyncio.sleep(5)
 
-        # Dynamic slot selection
+        return {"status": "success", "message": "Item added and moved to checkout"}
+
+    except Exception as e:
+        logger.error(f"Add to cart step failed: {str(e)}")
+        return {"status": "failed", "message": str(e), "screenshot": capture_screenshot(driver)}
+    
+async def test_checkout_step2(driver):
+    try:
+        wait = WebDriverWait(driver, 15)
+
         tab_triggers = driver.find_elements(By.CSS_SELECTOR, "li[data-index]")
         for trigger in tab_triggers:
             try:
                 index = trigger.get_attribute("data-index")
                 logger.info(f"Processing tab with data-index='{index}'")
 
-                # Click the li element to activate the tab
-                index_li = wait.until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, f"li[data-index='{index}']"))
-                )
+                index_li = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, f"li[data-index='{index}']")))
                 index_li.click()
                 logger.info(f"Clicked tab with data-index='{index}'")
+                await asyncio.sleep(2)
 
-                # Wait for the tab panel to become active
                 tab_panel = wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, "div.tab-content div.tab-pane[aria-hidden='false']"))
                 )
-                await asyncio.sleep(2)
 
-                # Find slot buttons
                 slot_buttons = tab_panel.find_elements(By.CSS_SELECTOR, "div.tableRow div.tableColumn button[class*='slot-']")
                 if not slot_buttons:
-                    logger.info(f"No slot buttons found in tab with data-index='{index}'")
+                    logger.info(f"No slot buttons in tab {index}")
                     continue
 
-                # Loop through slot buttons
                 for slot_button in slot_buttons:
                     try:
                         button_classes = slot_button.get_attribute("class") or ""
@@ -163,50 +161,35 @@ async def test_add_to_cart(driver, product_url):
                         is_disabled_attribute = slot_button.get_attribute("disabled") is not None
                         has_disabled_class = "disabledButton" in button_classes
 
-                        logger.info(f"Slot button in tab {index}: Classes={button_classes}, Enabled={is_enabled}, Has disabledButton={has_disabled_class}, Disabled Attribute={is_disabled_attribute}")
-
                         if has_disabled_class or not is_enabled or is_disabled_attribute:
-                            logger.info(f"Slot button skipped: {button_classes}")
                             continue
 
-                        # Click the slot button
-                        slot_button = wait.until(
-                            EC.element_to_be_clickable(slot_button)
-                        )
-                        slot_button.click()
-                        logger.info(f"Clicked slot button: {button_classes}")
+                        wait.until(EC.element_to_be_clickable(slot_button)).click()
                         await asyncio.sleep(2)
 
-                        # Proceed with remaining steps
-                        oos_option_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "btn-oos-option")))
-                        oos_option_button.click()
+                        wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "btn-oos-option"))).click()
                         await asyncio.sleep(2)
 
-                        add_delivery_comment = wait.until(
-                            EC.element_to_be_clickable((By.ID, "Comments"))
-                        )
-                        add_delivery_comment.send_keys("Developer Automat Test")
+                        wait.until(EC.element_to_be_clickable((By.ID, "Comments"))).send_keys("Developer Automat Test")
                         await asyncio.sleep(2)
 
-                        proceed_button = wait.until(EC.element_to_be_clickable((By.ID, "processCheckout")))
-                        proceed_button.click()
+                        wait.until(EC.element_to_be_clickable((By.ID, "processCheckout"))).click()
                         await asyncio.sleep(5)
 
-                        return {"status": "success", "message": "Process Success"}
+                        return {"status": "success", "message": "Checkout completed"}
 
                     except Exception as e:
-                        logger.error(f"Error processing slot button in tab {index}: {str(e)}")
+                        logger.error(f"Slot button error in tab {index}: {str(e)}")
                         continue
 
             except Exception as e:
-                logger.error(f"Error processing tab with data-index='{index}': {str(e)}")
+                logger.error(f"Tab processing error: {str(e)}")
                 continue
 
-        # If no valid slot was found
         return {"status": "failed", "message": "No available slot found", "screenshot": capture_screenshot(driver)}
 
     except Exception as e:
-        logger.error(f"Test failed: {str(e)}")
+        logger.error(f"Checkout step failed: {str(e)}")
         return {"status": "failed", "message": str(e), "screenshot": capture_screenshot(driver)}
 
 # FastAPI endpoint to run tests
@@ -220,7 +203,10 @@ async def run_tests(test_input: TestInput):
             results["login"] = await test_login(driver, test_input.url, test_input.username, test_input.password)
 
         if test_input.product_url:
-            results["add_to_cart"] = await test_add_to_cart(driver, test_input.product_url)
+            results["add_to_cart"] = await test_add_to_cart_step1(driver, test_input.product_url)
+
+        if test_input.product_url:
+            results["checkout"] = await test_checkout_step2(driver)    
 
         if not results:
             raise HTTPException(status_code=400, detail="No tests specified")
